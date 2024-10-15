@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Geolocation with Search</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-geosearch/dist/geosearch.css" />
+
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+
+      #map {
+        width: 100%;
+        height: 90vh;
+      }
+
+      .controls {
+        padding: 10px;
+        background-color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      input {
+        margin: 0 5px;
+        padding: 5px;
+      }
+
+      #distance {
+        font-size: 16px;
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="controls">
+      <input type="text" id="startSearch" placeholder="Search start location" />
+      <input type="text" id="endSearch" placeholder="Search destination" />
+      <button onclick="calculateRoute()">Calculate Route</button>
+      <div id="distance"></div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    <script src="https://unpkg.com/leaflet-geosearch/dist/geosearch.umd.js"></script>
+
+    <script>
+      // Initialize the map
+      var map = L.map('map').setView([12.8875554, 74.8413335], 11);
+      L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+        attribution: 'Leaflet &copy; OpenStreetMap, contribution',
+        maxZoom: 18,
+      }).addTo(map);
+
+      var taxiIcon = L.icon({
+        iconUrl: './assets/default-marker@1x.png',
+        iconSize: [50, 50],
+      });
+
+      var marker = L.marker([12.8875554, 74.8413335], {icon: taxiIcon}).addTo(
+        map,
+      );
+
+      // Initialize search providers
+      const provider = new window.GeoSearch.OpenStreetMapProvider();
+
+      const startSearchControl = new GeoSearch.GeoSearchControl({
+        provider: provider,
+        style: 'bar',
+        showMarker: false,
+        autoClose: true,
+        retainZoomLevel: true,
+      });
+
+      const endSearchControl = new GeoSearch.GeoSearchControl({
+        provider: provider,
+        style: 'bar',
+        showMarker: false,
+        autoClose: true,
+        retainZoomLevel: true,
+      });
+
+      // Add search control to map
+      map.addControl(startSearchControl);
+      map.addControl(endSearchControl);
+
+      let startMarker, endMarker;
+      let startLatLng, endLatLng;
+
+      // Capture search result for start location
+      map.on('geosearch/showlocation', function (e) {
+        if (!startMarker && !endMarker) {
+          // First search is considered start point
+          startLatLng = e.location;
+          startMarker = L.marker([e.location.y, e.location.x], {
+            icon: taxiIcon,
+          }).addTo(map);
+          document.getElementById('startSearch').value = `${e.location.label}`;
+        } else if (startMarker && !endMarker) {
+          // Second search is considered end point
+          endLatLng = e.location;
+          endMarker = L.marker([e.location.y, e.location.x]).addTo(map);
+          document.getElementById('endSearch').value = `${e.location.label}`;
+        }
+      });
+
+      // Function to calculate the route
+      function calculateRoute() {
+        if (!startLatLng || !endLatLng) {
+          alert('Please select both start and destination locations.');
+          return;
+        }
+
+        // Clear previous routes
+        if (window.routeControl) {
+          map.removeControl(window.routeControl);
+        }
+
+        // Use Leaflet Routing Machine to show the route and calculate the distance
+        window.routeControl = L.Routing.control({
+          waypoints: [
+            L.latLng(startLatLng.y, startLatLng.x),
+            L.latLng(endLatLng.y, endLatLng.x),
+          ],
+          lineOptions: {
+            styles: [{color: 'blue', opacity: 0.6, weight: 4}],
+          },
+          router: L.Routing.osrmv1({
+            language: 'en',
+            profile: 'car',
+          }),
+          showAlternatives: true,
+          altLineOptions: {styles: [{color: 'green', opacity: 0.5, weight: 2}]},
+        })
+          .on('routesfound', function (e) {
+            var routes = e.routes;
+            var summary = routes[0].summary;
+
+            // Display distance and time
+            var distance = (summary.totalDistance / 1000).toFixed(2); // in kilometers
+            var time = (summary.totalTime / 60).toFixed(2); // in minutes
+
+            document.getElementById(
+              'distance',
+            ).innerHTML = `Distance: ${distance} km, Time: ${time} min`;
+
+            // Animate the marker along the route
+            routes[0].coordinates.forEach(function (coord, index) {
+              setTimeout(function () {
+                marker.setLatLng([coord.lat, coord.lng]);
+              }, 100 * index);
+            });
+          })
+          .addTo(map);
+      }
+    </script>
+  </body>
+</html>
