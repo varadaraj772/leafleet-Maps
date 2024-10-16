@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Route Optimization with TSP and Moving Marker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+  
+  <!-- Leaflet Routing Machine CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-width: 300px;
+      font-family: Arial, sans-serif;
+    }
+
+    #routeInfo {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    #progress-bar {
+      width: 100%;
+      height: 20px;
+      background: lightgray;
+      margin-top: 10px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #progress {
+      height: 100%;
+      background: green;
+      width: 0%;
+      transition: width 0.5s;
+    }
+
+    button {
+      margin: 5px 0;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background-color: #007BFF;
+      color: white;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <div id="routeInfo">Loading route information...</div>
+    <div id="progress-bar">
+      <div id="progress"></div>
+    </div>
+    <button id="startTracking">Start Tracking</button>
+    <button id="stopTracking">Stop Tracking</button>
+    <button id="addWaypoint">Add Waypoint</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+  
+  <!-- Leaflet Routing Machine JS -->
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize Map centered on Mangalore
+      var map = L.map('map').setView([12.9172, 74.856], 13); 
+      var currentLocationMarker;
+      var watchID;
+      var control;
+      var waypoints = [
+        L.latLng(13.285076045157561, 74.81442041847836),
+        L.latLng(13.34599176194056, 74.7663456912575),
+        L.latLng(13.3526140383765, 74.79281952351417), 
+        L.latLng(13.223884526915173, 74.73680957875176), 
+      ];
+
+      // Define Marker Icons using publicly hosted images
+      var redIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      var blueIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      var greenIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      var greyIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      // Add OpenStreetMap Tile Layer
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Initialize Routing Control without waypoints
+      control = L.Routing.control({
+        waypoints: [],
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1',
+          profile: 'car',
+          timeout: 30 * 1000,
+          language: 'en',
+          units: 'metric'
+        }),
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        show: false,
+        createMarker: function(i, wp) {
+          // Custom markers for start, waypoints, and end
+          if (i === 0) {
+            return L.marker(wp.latLng, { icon: greenIcon }); // Start
+          } else if (i === control.getWaypoints().length -1) {
+            return L.marker(wp.latLng, { icon: redIcon }); // End
+          } else {
+            return L.marker(wp.latLng, { icon: greyIcon }); // Waypoints
+          }
+        }
+      }).addTo(map);
+
+      // Function to Solve TSP using Nearest Neighbor + 2-opt
+      function solveTSP(start, points) {
+        let tspPath = [start];
+        let remaining = points.slice();
+        let current = start;
+
+        // Nearest Neighbor Heuristic
+        while (remaining.length > 0) {
+          let nearest = null;
+          let minDist = Infinity;
+          let nearestIndex = -1;
+          remaining.forEach((point, index) => {
+            let dist = current.distanceTo(point);
+            if (dist < minDist) {
+              minDist = dist;
+              nearest = point;
+              nearestIndex = index;
+            }
+          });
+          tspPath.push(nearest);
+          current = nearest;
+          remaining.splice(nearestIndex, 1);
+        }
+
+        tspPath.push(start); // Return to start
+
+        // Apply 2-opt Optimization
+        tspPath = twoOpt(tspPath);
+
+        return tspPath;
+      }
+
+      // 2-opt Algorithm Implementation
+      function twoOpt(route) {
+        let best = route.slice();
+        let improved = true;
+
+        while (improved) {
+          improved = false;
+          for (let i = 1; i < best.length - 2; i++) {
+            for (let j = i + 1; j < best.length -1; j++) {
+              let newRoute = best.slice(0, i).concat(best.slice(i, j +1).reverse()).concat(best.slice(j +1));
+              if (calculateDistance(newRoute) < calculateDistance(best)) {
+                best = newRoute;
+                improved = true;
+              }
+            }
+          }
+        }
+        return best;
+      }
+
+      // Function to Calculate Total Distance of a Route
+      function calculateDistance(route) {
+        let dist = 0;
+        for (let i = 0; i < route.length -1; i++) {
+          dist += route[i].distanceTo(route[i+1]);
+        }
+        return dist;
+      }
+
+      // Cache for Optimized Routes
+      let routeCache = {};
+
+      // Function to Get Cached Route or Compute New One
+      function getCachedRoute(start, waypoints) {
+        let key = JSON.stringify({ start: start, waypoints: waypoints });
+        if (routeCache[key]) {
+          return routeCache[key];
+        }
+        let optimizedRoute = solveTSP(start, waypoints);
+        routeCache[key] = optimizedRoute;
+        return optimizedRoute;
+      }
+
+      // Function to Update Route on the Map
+      function updateRoute() {
+        if (!currentLocationMarker) {
+          // If current location is not set, use default center
+          var startLatLng = L.latLng(12.9172, 74.856);
+        } else {
+          var startLatLng = currentLocationMarker.getLatLng();
+        }
+
+        var optimizedWaypoints = solveTSP(startLatLng, waypoints);
+
+        // Clear existing waypoints
+        control.setWaypoints([]);
+
+        // Add optimized waypoints to the routing control
+        control.setWaypoints(optimizedWaypoints);
+
+        // Update Route Information
+        control.on('routesfound', function(e) {
+          var routes = e.routes;
+          var summary = routes[0].summary;
+          document.getElementById('routeInfo').innerHTML =
+            '<strong>Optimized Distance:</strong> ' +
+            (summary.totalDistance / 1000).toFixed(2) +
+            ' km<br>' +
+            '<strong>Estimated Time:</strong> ' +
+            (summary.totalTime / 60).toFixed(2) +
+            ' minutes';
+        });
+      }
+
+      // Function to Update Current Location Marker
+      function updateMarkerPosition(position) {
+        var lat = position.coords.latitude;
+        var lng = position.coords.longitude;
+        var newLatLng = L.latLng(lat, lng);
+
+        if (currentLocationMarker) {
+          currentLocationMarker.setLatLng(newLatLng);
+        } else {
+          currentLocationMarker = L.marker(newLatLng, {
+            icon: greenIcon,
+            draggable: false
+          }).addTo(map);
+        }
+
+        map.setView(newLatLng, 13);
+
+        updateRoute();
+      }
+
+      // Function to Handle Geolocation Errors
+      function handleError(error) {
+        console.error("Error in geolocation: ", error);
+        alert("Unable to access your current location.");
+      }
+
+      // Function to Start Tracking User's Location
+      function startTracking() {
+        if ("geolocation" in navigator) {
+          watchID = navigator.geolocation.watchPosition(updateMarkerPosition, handleError, {
+            enableHighAccuracy: true,
+            maximumAge: 30000,
+            timeout: 27000
+          });
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
+      }
+
+      // Function to Stop Tracking User's Location
+      function stopTracking() {
+        if (watchID !== undefined) {
+          navigator.geolocation.clearWatch(watchID);
+          watchID = undefined;
+        }
+      }
+
+      // Function to Add a New Waypoint at Map Center
+      function addWaypoint() {
+        var center = map.getCenter();
+        var newWaypoint = L.latLng(center.lat, center.lng);
+        waypoints.push(newWaypoint);
+        updateRoute();
+
+        // Add a draggable marker for the new waypoint
+        var marker = L.marker(newWaypoint, { draggable: true, icon: blueIcon }).addTo(map);
+        marker.on('dragend', function(e) {
+          var index = waypoints.indexOf(newWaypoint);
+          if (index !== -1) {
+            waypoints[index] = e.target.getLatLng();
+            updateRoute();
+          }
+        });
+      }
+
+      // Event Listeners for Buttons
+      document.getElementById('startTracking').addEventListener('click', startTracking);
+      document.getElementById('stopTracking').addEventListener('click', stopTracking);
+      document.getElementById('addWaypoint').addEventListener('click', addWaypoint);
+
+      // Initialize: Get User's Current Location and Set Up Initial Route
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          updateMarkerPosition(position);
+
+          // Add draggable markers for predefined waypoints
+          waypoints.forEach(function(wp) {
+            var marker = L.marker(wp, { draggable: true, icon: blueIcon }).addTo(map);
+            marker.on('dragend', function(e) {
+              var index = waypoints.indexOf(wp);
+              if (index !== -1) {
+                waypoints[index] = e.target.getLatLng();
+                updateRoute();
+              }
+            });
+          });
+
+          updateRoute();
+        },
+        function() {
+          alert('Unable to access your current location.');
+          // Proceed with default center and predefined waypoints
+          waypoints.forEach(function(wp) {
+            var marker = L.marker(wp, { draggable: true, icon: blueIcon }).addTo(map);
+            marker.on('dragend', function(e) {
+              var index = waypoints.indexOf(wp);
+              if (index !== -1) {
+                waypoints[index] = e.target.getLatLng();
+                updateRoute();
+              }
+            });
+          });
+          updateRoute();
+        }
+      );
+    });
+  </script>
+</body>
+</html>

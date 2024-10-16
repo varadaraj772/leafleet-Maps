@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Download Example</title>
+  </head>
+  <body>
+    Lorem ipsum dolor sit amet consectetur adipisicing elit. Ullam nesciunt,
+    pariatur iure amet atque mollitia officia officiis consequuntur voluptatem
+    corrupti fugit fugiat quos, odit necessitatibus veniam iusto voluptatum aut
+    aspernatur. Lorem ipsum dolor sit amet consectetur adipisicing elit. Ratione
+    assumenda ipsum in laborum provident, vero impedit sit nemo iure magnam
+    illum voluptatibus molestias deleniti quasi perferendis neque deserunt?
+    Earum, natus?
+  </body>
+  <button onclick="downloadFile()">Download Text File</button>
+  <script>
+    function downloadFile() {
+      var bodyContent = document.body.textContent;
+      var dataUrl = "data:text/plain," + encodeURIComponent(bodyContent);
+      var link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "body.txt";
+      link.click();
+    }
+  </script>
+</html>

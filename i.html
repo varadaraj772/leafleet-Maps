@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Route Optimization with TSP and Moving Marker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+  
+  <!-- Leaflet Routing Machine CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-width: 300px;
+      font-family: Arial, sans-serif;
+    }
+
+    #routeInfo {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    #progress-bar {
+      width: 100%;
+      height: 20px;
+      background: lightgray;
+      margin-top: 10px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #progress {
+      height: 100%;
+      background: green;
+      width: 0%;
+      transition: width 0.5s;
+    }
+
+    button {
+      margin: 5px 0;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background-color: #007BFF;
+      color: white;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <div id="routeInfo">Loading route information...</div>
+    <div id="progress-bar">
+      <div id="progress"></div>
+    </div>
+    <button id="startTracking">Start Tracking</button>
+    <button id="stopTracking">Stop Tracking</button>
+    <button id="addWaypoint">Add Waypoint</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+  
+  <!-- Leaflet Routing Machine JS -->
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize Map centered on Mangalore
+      var map = L.map('map').setView([12.9172, 74.856], 13); 
+      var currentLocationMarker;
+      var watchID;
+      var control;
+      var waypoints = [];
+
+      // Define Marker Icons using publicly hosted images
+      var redIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      var greenIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      });
+
+      // Add OpenStreetMap Tile Layer
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Initialize Routing Control without waypoints
+      control = L.Routing.control({
+        waypoints: [],
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1',
+          profile: 'car',
+          timeout: 30 * 1000,
+          language: 'en',
+          units: 'metric'
+        }),
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        show: false,
+        createMarker: function(i, wp) {
+          if (i === 0 || i === control.getWaypoints().length - 1) {
+            return L.marker(wp.latLng, { icon: greenIcon });
+          } else {
+            return L.marker(wp.latLng, { icon: redIcon });
+          }
+        }
+      }).addTo(map);
+
+      // Function to Start Tracking User's Location
+      function startTracking() {
+        if ("geolocation" in navigator) {
+          watchID = navigator.geolocation.watchPosition(function(position) {
+            var lat = position.coords.latitude;
+            var lng = position.coords.longitude;
+            var newLatLng = L.latLng(lat, lng);
+
+            if (currentLocationMarker) {
+              currentLocationMarker.setLatLng(newLatLng);
+            } else {
+              currentLocationMarker = L.marker(newLatLng, {
+                icon: greenIcon,
+                draggable: false
+              }).addTo(map);
+            }
+
+            map.setView(newLatLng, 13);
+
+            // Set the start and end point to the current location
+            if (waypoints.length === 0) {
+              waypoints.push(newLatLng);
+            }
+            waypoints[0] = newLatLng;
+            waypoints[waypoints.length - 1] = newLatLng; // End point
+
+            // Update the route with the waypoints
+            control.setWaypoints(waypoints);
+          }, function(error) {
+            console.error("Geolocation error:", error);
+            alert("Unable to access your current location.");
+          }, {
+            enableHighAccuracy: true,
+            maximumAge: 30000,
+            timeout: 27000
+          });
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
+      }
+
+      // Function to Stop Tracking User's Location
+      function stopTracking() {
+        if (watchID !== undefined) {
+          navigator.geolocation.clearWatch(watchID);
+          watchID = undefined;
+        }
+      }
+
+      // Function to Add a New Waypoint at Map Center
+      function addWaypoint() {
+        var center = map.getCenter();
+        var newWaypoint = L.latLng(center.lat, center.lng);
+        waypoints.splice(waypoints.length - 1, 0, newWaypoint); // Insert before the end point
+        control.setWaypoints(waypoints);
+      }
+
+      // Event Listeners for Buttons
+      document.getElementById('startTracking').addEventListener('click', startTracking);
+      document.getElementById('stopTracking').addEventListener('click', stopTracking);
+      document.getElementById('addWaypoint').addEventListener('click', addWaypoint);
+    });
+  </script>
+</body>
+</html>
