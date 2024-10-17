@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title></title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+
+      #map {
+        width: 100%;
+        height: 100vh;
+      }
+
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 10px;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <div id="info">
+      <p id="routeInfo"></p>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        var map = L.map('map').setView([12.9172, 74.856], 13); // Default view for Mangalore
+
+        // Add tile layer (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 18,
+        }).addTo(map);
+
+        // Target location (non-commented waypoint)
+        var targetLocation = L.latLng(12.878677748833901, 74.84154519586667);
+
+        // Update marker position
+        function updateMarkerPosition(position) {
+          var lat = position.coords.latitude;
+          var lng = position.coords.longitude;
+          var newLatLng = L.latLng(lat, lng);
+
+          // Set marker to current location
+          L.marker(newLatLng).addTo(map);
+          map.setView(newLatLng);
+
+          // Create routing control to the target location
+          L.Routing.control({
+            waypoints: [newLatLng, targetLocation],
+            routeWhileDragging: true,
+            router: L.Routing.osrmv1({
+              profile: 'car',
+              serviceUrl: 'https://router.project-osrm.org/route/v1',
+            }),
+            createMarker: function () {
+              return null; // Do not create additional markers
+            },
+          })
+          .on('routesfound', function (e) {
+            var routes = e.routes;
+            var summary = routes[0].summary;
+            document.getElementById('routeInfo').innerHTML =
+              'Distance: ' +
+              (summary.totalDistance / 1000).toFixed(2) +
+              ' km<br>' +
+              'Estimated Time: ' +
+              (summary.totalTime / 60).toFixed(2) +
+              ' minutes';
+          })
+          .addTo(map);
+        }
+
+        // Start tracking location
+        function startTracking() {
+          if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(updateMarkerPosition, function(error) {
+              console.error("Error in geolocation: ", error);
+            }, {
+              enableHighAccuracy: true,
+              maximumAge: 30000,
+              timeout: 27000
+            });
+          } else {
+            alert("Geolocation is not supported by this browser.");
+          }
+        }
+
+        // Start the tracking process
+        startTracking();
+      });
+    </script>
+  </body>
+</html>

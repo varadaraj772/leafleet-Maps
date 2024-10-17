@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Geolocation</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+    />
+
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        width: 100%;
+        height: 100vh;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+    <script>
+      // Initialize the map
+      var map = L.map("map").setView([12.9172, 74.856], 13);
+      var mapLink = "<a href='http://openstreetmap.org'>OpenStreetMap</a>";
+      L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
+        attribution: "Leaflet &copy; " + mapLink + ", contribution",
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Define taxi icon
+      var taxiIcon = L.icon({
+        iconUrl:
+          "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+      });
+
+      // Create a marker for the current location
+      var currentMarker = L.marker([0, 0], { icon: taxiIcon }).addTo(map);
+      var destinationLatLng = L.latLng(12.878679523141546, 74.8415345349808);
+      var routeControl;
+
+      // Function to update the user's position
+      function updatePosition(position) {
+        var currentLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+        
+        // Update marker position
+        currentMarker.setLatLng(currentLatLng);
+        map.setView(currentLatLng, 13);
+        
+        // Check if route control exists
+        if (routeControl) {
+          routeControl.setWaypoints([currentLatLng, destinationLatLng]);
+        } else {
+          // Create routing control from current position to destination
+          routeControl = L.Routing.control({
+            waypoints: [currentLatLng, destinationLatLng],
+            routeWhileDragging: true, // Allows the route to update while dragging
+          }).addTo(map);
+        }
+      }
+
+      // Function to handle geolocation errors
+      function handleError(error) {
+        console.error("Geolocation error: ", error);
+      }
+
+      // Get current location using Geolocation API
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(updatePosition, handleError, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000,
+        });
+      } else {
+        console.error("Geolocation is not supported by this browser.");
+      }
+    </script>
+  </body>
+</html>
