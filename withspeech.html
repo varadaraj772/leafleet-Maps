@@ -1,6 +1,3 @@
-
-
-
 <!DOCTYPE html>
 <html>
   <head>
@@ -59,12 +56,11 @@
     <div class="map-controls">
       <button id="reset-btn" style="display: none">Reset Waypoints</button>
       <button id="route-btn" disabled>Calculate Route</button>
-      <button id="start-nav-btn" disabled>Start Navigation</button>
       <div id="route-info"></div>
     </div>
     <script>
       // Initialize Map
-      var map = L.map("map").setView([12.9172, 74.856], 15);
+      var map = L.map("map").setView([12.9172, 74.856], 13);
 
       // Add Tile Layer
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -73,11 +69,14 @@
         subdomains: ["a", "b", "c"],
       }).addTo(map);
 
-      // Variables for Waypoints, Markers, and Route Control
+      // Variables for Waypoints, Markers, Route Control, and Voice Instructions
       var wayPoints = [];
       var markers = [];
       var routingControl;
       var currentLocationMarker;
+      var speechSynthesis = window.speechSynthesis;
+      var nextInstructionIndex = 0;
+      var instructions = [];
 
       // Listener for Map Click
       map.on("click", function (e) {
@@ -91,17 +90,9 @@
         document.getElementById("reset-btn").style.display =
           wayPoints.length > 0 ? "block" : "none";
         document.getElementById("route-btn").disabled = wayPoints.length < 2;
-        document.getElementById("start-nav-btn").disabled = wayPoints.length < 2; // Enable only when there are enough waypoints
       }
 
-      // Text-to-Speech Function
-      function speak(text) {
-        var speech = new SpeechSynthesisUtterance(text);
-        speech.lang = "en-US";
-        window.speechSynthesis.speak(speech);
-      }
-
-      // Calculate and Display Route with Voice Directions
+      // Calculate and Display Route
       document
         .getElementById("route-btn")
         .addEventListener("click", function () {
@@ -121,9 +112,10 @@
           })
             .on("routesfound", function (e) {
               var route = e.routes[0];
+              instructions = route.instructions;
+              nextInstructionIndex = 0;
               updateRouteInfo(route);
-              document.getElementById("start-nav-btn").disabled = false; // Enable navigation button
-              announceRoute(route); // Announce directions
+              trackCurrentLocation(route);
             })
             .addTo(map);
         });
@@ -135,15 +127,18 @@
           "Distance: " + distance + " km, Time: " + time + " mins";
       }
 
-      // Start Navigation
-      document
-        .getElementById("start-nav-btn")
-        .addEventListener("click", function () {
-          trackCurrentLocation();
-        });
+      // Function to Announce the Next Step
+      function announceNextInstruction() {
+        if (nextInstructionIndex < instructions.length) {
+          var nextInstruction = instructions[nextInstructionIndex].text;
+          var utterThis = new SpeechSynthesisUtterance(nextInstruction);
+          speechSynthesis.speak(utterThis);
+          nextInstructionIndex++;
+        }
+      }
 
       // Track Current Location and Update Info
-      function trackCurrentLocation() {
+      function trackCurrentLocation(route) {
         if (!navigator.geolocation) {
           alert("Geolocation is not supported by your browser.");
           return;
@@ -165,6 +160,16 @@
               currentLocationMarker.setLatLng(latLng);
             }
 
+            // Check proximity to the next instruction waypoint
+            if (nextInstructionIndex < instructions.length) {
+              var nextLatLng = instructions[nextInstructionIndex].latLng;
+              var distanceToNextStep = map.distance(latLng, nextLatLng);
+              if (distanceToNextStep < 50) {
+                // Announce instruction if within 50 meters
+                announceNextInstruction();
+              }
+            }
+
             // Check if the current location is near the destination
             var destination = wayPoints[wayPoints.length - 1];
             var distanceToDestination = map.distance(latLng, destination);
@@ -180,7 +185,6 @@
               );
               document.getElementById("route-info").innerHTML =
                 "You have reached your destination!";
-              speak("You have reached your destination!");
               return;
             }
 
@@ -194,13 +198,6 @@
           },
           { enableHighAccuracy: true }
         );
-      }
-
-      // Announce Route Instructions via Voice
-      function announceRoute(route) {
-        route.instructions.forEach((instruction) => {
-          speak(instruction.text);
-        });
       }
 
       // Reset Waypoints
@@ -221,6 +218,7 @@
           wayPoints = [];
           markers = [];
           currentLocationMarker = null;
+          nextInstructionIndex = 0;
           updateUI();
           document.getElementById("route-info").innerHTML = "";
         });
