@@ -6,10 +6,12 @@
     <title>Route Optimization with TSP and Moving Marker</title>
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css" />
+      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css"
+    />
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+    />
     <style>
       body,
       html {
@@ -17,59 +19,172 @@
         padding: 0;
         height: 100%;
       }
-
       #map {
         width: 100%;
         height: 100vh;
       }
-
-      #info {
+      #info,
+      #controls {
         position: absolute;
-        top: 10px;
-        left: 10px;
-        background: white;
+        top: 1.5%;
+        left: 3%;
+        background: rgba(255, 255, 255, 0.6);
         padding: 10px;
         z-index: 1000;
       }
-
-      input[type='text'] {
-        width: 250px;
-        padding: 5px;
+      #controls {
+        top: 80px;
+      }
+      button {
         margin: 5px;
+        padding: 10px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      #startFromCurrent:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      #endNavigation:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      #startNavigation:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      #resetNavigation {
+        background-color: red;
+      }
+      #resetNavigation:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
       }
     </style>
   </head>
-
   <body>
     <div id="map"></div>
-    <div id="info">
-      <p id="routeInfo"></p>
+    <div id="controls">
+      <p id="routeInfo">Click on the map to add waypoints.</p>
+      <button id="startNavigation">Start Navigation</button>
+      <button id="endNavigation" disabled>End Navigation</button>
+      <br>
+      <button id="startFromCurrent">Start from My Location</button>
+      <button id="resetNavigation" disabled>Reset Navigation</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
 
     <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        var map = L.map('map').setView([12.9172, 74.856], 13);
+      document.addEventListener("DOMContentLoaded", function () {
+        var map = L.map("map").setView([12.9172, 74.856], 13);
         var currentLocationMarker;
         var watchID;
+        var waypoints = [];
+        var markers = [];
+        var routingControl;
+        var navigationStarted = false;
+        var currentInstructionIndex = 0;
 
         // Add tile layer (OpenStreetMap)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 18,
         }).addTo(map);
 
-        // Predefined waypoints around Mangalore
-        var waypoints = [
-          // L.latLng(13.285076045157561, 74.81442041847836),
-          // L.latLng(13.34599176194056, 74.7663456912575),
-          // L.latLng(13.3526140383765, 74.79281952351417), 
-          // L.latLng(13.223884526915173, 74.73680957875176), 
-            L.latLng(12.878677748833901, 74.84154519586667), 
-          
-        ];
+        // Listener for Map Click to add waypoints
+        // Listener for Map Click to add waypoints
+        map.on("click", function (e) {
+          var latLng = e.latlng;
+          waypoints.push(latLng);
+          markers.push(L.marker(latLng).addTo(map));
+          updateUI();
+
+          // Stop current navigation if active, disable buttons, and alert user to restart
+          if (navigationStarted) {
+            stopCurrentNavigation();
+
+            // Disable buttons during restart
+            document.getElementById("startNavigation").disabled = true;
+            document.getElementById("endNavigation").disabled = true;
+            document.getElementById("startFromCurrent").disabled = true;
+
+            // Alert user about new waypoint addition
+            alert("New waypoint added. Navigation will be restarted.");
+
+            // Restart navigation after alert is acknowledged
+            navigator.geolocation.getCurrentPosition(
+              function (position) {
+                // Restart navigation with updated waypoints
+                restartNavigationFromCurrentLocation(position);
+              },
+              function (error) {
+                alert("Unable to retrieve your location.");
+              }
+            );
+          }
+        });
+
+        // Restart navigation from current location with all waypoints included
+        function restartNavigationFromCurrentLocation(position) {
+          var currentLatLng = L.latLng(
+            position.coords.latitude,
+            position.coords.longitude
+          );
+          waypoints.unshift(currentLatLng); // Add current location as the first waypoint
+
+          // Solve TSP to get the optimized order of waypoints
+          var optimizedWaypoints = solveTSP(currentLatLng, waypoints.slice());
+
+          if (routingControl) {
+            map.removeControl(routingControl);
+          }
+
+          routingControl = L.Routing.control({
+            waypoints: optimizedWaypoints,
+            routeWhileDragging: true,
+            router: L.Routing.osrmv1({
+              profile: "car",
+              serviceUrl: "https://router.project-osrm.org/route/v1",
+              optimizedWaypoints: true,
+            }),
+            createMarker: function (i, wp) {
+              return L.marker(wp.latLng);
+            },
+          })
+            .on("routesfound", function (e) {
+              currentInstructionIndex = 0;
+              navigationStarted = true;
+              document.getElementById("endNavigation").disabled = false;
+              document.getElementById("startNavigation").disabled = true;
+              document.getElementById("startFromCurrent").disabled = true;
+              speak("New waypoint added. And Navigation restarted.");
+            })
+            .addTo(map);
+
+          startTracking();
+        }
+
+        // Stop current navigation function
+        function stopCurrentNavigation() {
+          stopTracking();
+          if (routingControl) {
+            map.removeControl(routingControl);
+            routingControl = null;
+            speak("Navigation Ended");
+          }
+          navigationStarted = false;
+          document.getElementById("startNavigation").disabled = false;
+          document.getElementById("startFromCurrent").disabled = false;
+          document.getElementById("endNavigation").disabled = true;
+        }
 
         // TSP solver (nearest neighbor heuristic)
         function solveTSP(start, points) {
@@ -106,79 +221,163 @@
           } else {
             currentLocationMarker = L.marker(newLatLng, {
               icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                iconUrl:
+                  "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
                 popupAnchor: [1, -34],
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                shadowSize: [41, 41]
-              })
+                shadowUrl:
+                  "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                shadowSize: [41, 41],
+              }),
             }).addTo(map);
           }
 
           map.setView(newLatLng);
+
+          if (navigationStarted) {
+            checkProximityToNextInstruction(newLatLng);
+          }
         }
+        document
+          .getElementById("resetNavigation")
+          .addEventListener("click", function () {
+            stopCurrentNavigation();
+            markers.forEach(function (marker) {
+            map.removeLayer(marker);
+          });
+          markers = [];
+          if (currentLocationMarker) {
+            map.removeLayer(currentLocationMarker);
+            currentLocationMarker = null;
+          }
+          if (routingControl) {
+            map.removeControl(routingControl);
+            routingControl = null;
+          }
+          navigationStarted = false;
+          document.getElementById("startNavigation").disabled = false;
+          document.getElementById("startFromCurrent").disabled = false;
+          document.getElementById("endNavigation").disabled = true;
+          this.disabled = true;
+            waypoints = [];
+            markers = [];
+            updateUI();
+          });
 
         // Start tracking location
         function startTracking() {
           if ("geolocation" in navigator) {
-            watchID = navigator.geolocation.watchPosition(updateMarkerPosition, function(error) {
-              console.error("Error in geolocation: ", error);
-            }, {
-              enableHighAccuracy: true,
-              maximumAge: 30000,
-              timeout: 27000
-            });
+            watchID = navigator.geolocation.watchPosition(
+              updateMarkerPosition,
+              function (error) {
+                console.error("Error in geolocation: ", error);
+              },
+              {
+                enableHighAccuracy: true,
+                maximumAge: 30000,
+                timeout: 27000,
+              }
+            );
           } else {
             alert("Geolocation is not supported by this browser.");
           }
         }
 
-        // Get initial location and solve TSP
-        navigator.geolocation.getCurrentPosition(
-          function (position) {
-            var startLatLng = L.latLng(
-              position.coords.latitude,
-              position.coords.longitude,
-            );
-            map.setView(startLatLng, 13);
+        // Stop tracking location
+        function stopTracking() {
+          if (watchID) {
+            navigator.geolocation.clearWatch(watchID);
+            watchID = null;
+          }
+        }
 
-            // Solve the TSP with the current location as start and end
+        // Voice announcement function
+        function speak(text) {
+          var speech = new SpeechSynthesisUtterance(text);
+          speech.lang = "en-US";
+          window.speechSynthesis.speak(speech);
+        }
+
+        // Start navigation
+        document
+          .getElementById("startNavigation")
+          .addEventListener("click", function () {
+            if (waypoints.length < 2) {
+              alert("Add at least two waypoints to start navigation.");
+              return;
+            }
+
+            var startLatLng = waypoints[0];
             var optimizedWaypoints = solveTSP(startLatLng, waypoints.slice());
 
-            // Create routing control with optimized waypoints
-            var control = L.Routing.control({
+            if (routingControl) {
+              map.removeControl(routingControl);
+            }
+
+            routingControl = L.Routing.control({
               waypoints: optimizedWaypoints,
               routeWhileDragging: true,
               router: L.Routing.osrmv1({
-                profile: 'car',
-                serviceUrl: 'https://router.project-osrm.org/route/v1',
+                profile: "car",
+                serviceUrl: "https://router.project-osrm.org/route/v1",
                 optimizedWaypoints: true,
               }),
               createMarker: function (i, wp) {
                 return L.marker(wp.latLng);
               },
             })
-              .on('routesfound', function (e) {
-                var routes = e.routes;
-                var summary = routes[0].summary;
-                document.getElementById('routeInfo').innerHTML =
-                  'Optimized Distance: ' +
-                  (summary.totalDistance / 1000).toFixed(2) +
-                  ' km<br>' +
-                  'Estimated Time: ' +
-                  (summary.totalTime / 60).toFixed(2) +
-                  ' minutes';
+              .on("routesfound", function (e) {
+                currentInstructionIndex = 0;
+                navigationStarted = true;
+                document.getElementById("endNavigation").disabled = false;
               })
               .addTo(map);
 
-            // Start tracking the current location
             startTracking();
-          },
-          function () {
-            alert('Unable to access your current location.');
-          },
-        );
+            speak("Navigation started");
+            this.disabled = true;
+            document.getElementById("startFromCurrent").disabled = true;
+          });
+
+        // End navigation
+        document
+          .getElementById("endNavigation")
+          .addEventListener("click", function () {
+            stopCurrentNavigation();
+            document.getElementById("resetNavigation").disabled = false;
+            //document.getElementById("startFromCurrent").disabled = true;
+          });
+
+        // Stop current navigation function
+
+        // Update UI text based on the waypoints
+        function updateUI() {
+          var routeInfo = document.getElementById("routeInfo");
+          routeInfo.innerHTML = "Waypoints: " + waypoints.length;
+        }
+
+        // Add current location to waypoints without starting navigation
+        document
+          .getElementById("startFromCurrent")
+          .addEventListener("click", function () {
+            navigator.geolocation.getCurrentPosition(
+              function (position) {
+                var currentLatLng = L.latLng(
+                  position.coords.latitude,
+                  position.coords.longitude
+                );
+                waypoints.push(currentLatLng);
+                L.marker(currentLatLng).addTo(map); // Add marker for current location
+                updateUI();
+                alert("Current location added as a waypoint.");
+                document.getElementById("startFromCurrent").disabled = true;
+              },
+              function (error) {
+                alert("Unable to retrieve your location.");
+              }
+            );
+          });
       });
     </script>
   </body>

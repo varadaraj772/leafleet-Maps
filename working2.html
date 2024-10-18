@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route Optimization</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+  
+  <!-- Leaflet Routing Machine CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100vh; }
+    #info { position: absolute; top: 10px; left: 10px; background: white; padding: 10px; z-index: 1000; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <div id="routeInfo">Loading route information...</div>
+    <button id="startTracking">Start Tracking</button>
+    <button id="stopTracking">Stop Tracking</button>
+    <button id="addWaypoint">Add Waypoint</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+  
+  <!-- Leaflet Routing Machine JS -->
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize Map centered on Mangalore
+      var map = L.map('map').setView([12.9172, 74.856], 13);
+      var waypoints = [
+        L.latLng(13.285076045157561, 74.81442041847836),
+        L.latLng(13.34599176194056, 74.7663456912575)
+      ];
+
+      var control = L.Routing.control({
+        waypoints: waypoints,
+        routeWhileDragging: true,
+        createMarker: function() { return null; }
+      }).addTo(map);
+
+      // Add OpenStreetMap Tile Layer
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Moving Marker to Follow the Route
+      let currentIndex = 0;
+      const marker = L.marker(waypoints[0]).addTo(map);
+      let watchID;
+
+      function moveMarker() {
+        if (currentIndex < waypoints.length) {
+          marker.setLatLng(waypoints[currentIndex]);
+          currentIndex++;
+        } else {
+          clearInterval(watchID);
+          document.getElementById('routeInfo').innerText = "Route completed!";
+        }
+      }
+
+      // Start Tracking
+      document.getElementById('startTracking').addEventListener('click', function() {
+        if (!watchID) {
+          currentIndex = 0; 
+          watchID = setInterval(moveMarker, 1000);
+          document.getElementById('routeInfo').innerText = "Tracking started...";
+        }
+      });
+
+      // Stop Tracking
+      document.getElementById('stopTracking').addEventListener('click', function() {
+        clearInterval(watchID);
+        watchID = null; 
+        document.getElementById('routeInfo').innerText = "Tracking stopped.";
+      });
+
+      // Add New Waypoint
+      document.getElementById('addWaypoint').addEventListener('click', function() {
+        const newWaypoint = L.latLng(12.9172 + Math.random() * 0.05, 74.856 + Math.random() * 0.05); 
+        waypoints.push(newWaypoint);
+        control.spliceWaypoints(control.getWaypoints().length - 1, 0, newWaypoint);
+        document.getElementById('routeInfo').innerText = "New waypoint added.";
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Interactive Map with Route Optimization and Voice Directions</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css"
+      integrity="sha256-sA+zWATbFveLLNqWO2gtiw3HL/lh1giY/Inf1BJ0z14="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"
+      integrity="sha256-o9N1jGDZrf5tS+Ft4gbIK7mYMipq9lqpVJ91xHSyKhg="
+      crossorigin=""
+    ></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+    <style>
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+      }
+      .map-controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: #fff;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+      }
+      .map-controls button {
+        margin: 5px;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        background-color: #4caf50;
+        color: #fff;
+        cursor: pointer;
+      }
+      .map-controls button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .map-controls #route-info {
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="map-controls">
+      <button id="reset-btn" style="display: none">Reset Waypoints</button>
+      <button id="route-btn" disabled>Calculate Route</button>
+      <button id="start-nav-btn" disabled>Start Navigation</button>
+      <div id="route-info"></div>
+    </div>
+    <script>
+      // Initialize Map
+      var map = L.map("map").setView([12.9172, 74.856], 15);
+
+      // Add Tile Layer
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+        subdomains: ["a", "b", "c"],
+      }).addTo(map);
+
+      // Variables for Waypoints, Markers, and Route Control
+      var wayPoints = [];
+      var markers = [];
+      var routingControl;
+      var currentLocationMarker;
+
+      // Listener for Map Click
+      map.on("click", function (e) {
+        var latLng = e.latlng;
+        wayPoints.push(latLng);
+        markers.push(L.marker(latLng).addTo(map));
+        updateUI();
+      });
+
+      function updateUI() {
+        document.getElementById("reset-btn").style.display =
+          wayPoints.length > 0 ? "block" : "none";
+        document.getElementById("route-btn").disabled = wayPoints.length < 2;
+        document.getElementById("start-nav-btn").disabled = wayPoints.length < 2; // Enable only when there are enough waypoints
+      }
+
+      // Text-to-Speech Function
+      function speak(text) {
+        var speech = new SpeechSynthesisUtterance(text);
+        speech.lang = "en-US";
+        window.speechSynthesis.speak(speech);
+      }
+
+      // Calculate and Display Route with Voice Directions
+      document
+        .getElementById("route-btn")
+        .addEventListener("click", function () {
+          if (routingControl) {
+            map.removeControl(routingControl);
+          }
+
+          routingControl = L.Routing.control({
+            waypoints: wayPoints,
+            router: L.Routing.osrmv1({
+              serviceUrl: "https://router.project-osrm.org/route/v1",
+            }),
+            routeWhileDragging: true,
+            createMarker: function () {
+              return null;
+            }, // Disable default markers
+          })
+            .on("routesfound", function (e) {
+              var route = e.routes[0];
+              updateRouteInfo(route);
+              document.getElementById("start-nav-btn").disabled = false; // Enable navigation button
+              announceRoute(route); // Announce directions
+            })
+            .addTo(map);
+        });
+
+      function updateRouteInfo(route) {
+        var distance = (route.summary.totalDistance / 1000).toFixed(2); // in km
+        var time = (route.summary.totalTime / 60).toFixed(2); // in minutes
+        document.getElementById("route-info").innerHTML =
+          "Distance: " + distance + " km, Time: " + time + " mins";
+      }
+
+      // Start Navigation
+      document
+        .getElementById("start-nav-btn")
+        .addEventListener("click", function () {
+          trackCurrentLocation();
+        });
+
+      // Track Current Location and Update Info
+      function trackCurrentLocation() {
+        if (!navigator.geolocation) {
+          alert("Geolocation is not supported by your browser.");
+          return;
+        }
+
+        navigator.geolocation.watchPosition(
+          function (position) {
+            var latLng = [position.coords.latitude, position.coords.longitude];
+            if (!currentLocationMarker) {
+              currentLocationMarker = L.marker(latLng, {
+                icon: L.icon({
+                  iconUrl:
+                    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png",
+                  iconSize: [25, 41],
+                  iconAnchor: [12, 41],
+                }),
+              }).addTo(map);
+            } else {
+              currentLocationMarker.setLatLng(latLng);
+            }
+
+            // Check if the current location is near the destination
+            var destination = wayPoints[wayPoints.length - 1];
+            var distanceToDestination = map.distance(latLng, destination);
+            if (distanceToDestination < 50) {
+              // Threshold for reaching destination (50 meters)
+              currentLocationMarker.setIcon(
+                L.icon({
+                  iconUrl:
+                    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-green.png",
+                  iconSize: [25, 41],
+                  iconAnchor: [12, 41],
+                })
+              );
+              document.getElementById("route-info").innerHTML =
+                "You have reached your destination!";
+              speak("You have reached your destination!");
+              return;
+            }
+
+            // Update route info with distance remaining
+            var distanceLeft = (distanceToDestination / 1000).toFixed(2); // in km
+            document.getElementById("route-info").innerHTML =
+              "Distance Left: " + distanceLeft + " km";
+          },
+          function (error) {
+            console.error(error);
+          },
+          { enableHighAccuracy: true }
+        );
+      }
+
+      // Announce Route Instructions via Voice
+      function announceRoute(route) {
+        console.log("----->>",route);
+        route.instructions.forEach((instruction) => {
+          speak(instruction.text);
+        });
+      }
+
+      // Reset Waypoints
+      document
+        .getElementById("reset-btn")
+        .addEventListener("click", function () {
+          // Remove Markers and Routing Layer
+          markers.forEach((marker) => map.removeLayer(marker));
+          map.eachLayer((layer) => {
+            if (layer instanceof L.Routing.Control) {
+              map.removeControl(layer);
+            }
+          });
+          if (currentLocationMarker) {
+            map.removeLayer(currentLocationMarker);
+          }
+          // Reset Variables
+          wayPoints = [];
+          markers = [];
+          currentLocationMarker = null;
+          updateUI();
+          document.getElementById("route-info").innerHTML = "";
+        });
+    </script>
+  </body>
+</html>

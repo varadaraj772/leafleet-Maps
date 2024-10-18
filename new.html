@@ -19,22 +19,26 @@
         padding: 0;
         height: 100%;
       }
+
       #map {
         width: 100%;
         height: 100vh;
       }
+
       #info,
       #controls {
         position: absolute;
-        top: 1.5%;
-        left: 3%;
-        background: rgba(255, 255, 255, 0.6);
+        top: 10px;
+        left: 10px;
+        background: white;
         padding: 10px;
         z-index: 1000;
       }
+
       #controls {
         top: 80px;
       }
+
       button {
         margin: 5px;
         padding: 10px;
@@ -43,39 +47,22 @@
         border: none;
         cursor: pointer;
       }
+
       button:hover {
         background-color: #0056b3;
       }
-      #startFromCurrent:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-      }
-      #endNavigation:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-      }
-      #startNavigation:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-      }
-      #resetNavigation {
-        background-color: red;
-      }
-      #resetNavigation:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-      }
     </style>
   </head>
+
   <body>
     <div id="map"></div>
-    <div id="controls">
+    <div id="info">
       <p id="routeInfo">Click on the map to add waypoints.</p>
+    </div>
+    <div id="controls">
       <button id="startNavigation">Start Navigation</button>
       <button id="endNavigation" disabled>End Navigation</button>
-      <br>
       <button id="startFromCurrent">Start from My Location</button>
-      <button id="resetNavigation" disabled>Reset Navigation</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
@@ -100,91 +87,18 @@
         }).addTo(map);
 
         // Listener for Map Click to add waypoints
-        // Listener for Map Click to add waypoints
         map.on("click", function (e) {
           var latLng = e.latlng;
           waypoints.push(latLng);
           markers.push(L.marker(latLng).addTo(map));
           updateUI();
 
-          // Stop current navigation if active, disable buttons, and alert user to restart
+          // Stop current navigation if active and alert user to restart
           if (navigationStarted) {
             stopCurrentNavigation();
-
-            // Disable buttons during restart
-            document.getElementById("startNavigation").disabled = true;
-            document.getElementById("endNavigation").disabled = true;
-            document.getElementById("startFromCurrent").disabled = true;
-
-            // Alert user about new waypoint addition
-            alert("New waypoint added. Navigation will be restarted.");
-
-            // Restart navigation after alert is acknowledged
-            navigator.geolocation.getCurrentPosition(
-              function (position) {
-                // Restart navigation with updated waypoints
-                restartNavigationFromCurrentLocation(position);
-              },
-              function (error) {
-                alert("Unable to retrieve your location.");
-              }
-            );
+            alert("New waypoint added. Please restart navigation.");
           }
         });
-
-        // Restart navigation from current location with all waypoints included
-        function restartNavigationFromCurrentLocation(position) {
-          var currentLatLng = L.latLng(
-            position.coords.latitude,
-            position.coords.longitude
-          );
-          waypoints.unshift(currentLatLng); // Add current location as the first waypoint
-
-          // Solve TSP to get the optimized order of waypoints
-          var optimizedWaypoints = solveTSP(currentLatLng, waypoints.slice());
-
-          if (routingControl) {
-            map.removeControl(routingControl);
-          }
-
-          routingControl = L.Routing.control({
-            waypoints: optimizedWaypoints,
-            routeWhileDragging: true,
-            router: L.Routing.osrmv1({
-              profile: "car",
-              serviceUrl: "https://router.project-osrm.org/route/v1",
-              optimizedWaypoints: true,
-            }),
-            createMarker: function (i, wp) {
-              return L.marker(wp.latLng);
-            },
-          })
-            .on("routesfound", function (e) {
-              currentInstructionIndex = 0;
-              navigationStarted = true;
-              document.getElementById("endNavigation").disabled = false;
-              document.getElementById("startNavigation").disabled = true;
-              document.getElementById("startFromCurrent").disabled = true;
-              speak("New waypoint added. And Navigation restarted.");
-            })
-            .addTo(map);
-
-          startTracking();
-        }
-
-        // Stop current navigation function
-        function stopCurrentNavigation() {
-          stopTracking();
-          if (routingControl) {
-            map.removeControl(routingControl);
-            routingControl = null;
-            speak("Navigation Ended");
-          }
-          navigationStarted = false;
-          document.getElementById("startNavigation").disabled = false;
-          document.getElementById("startFromCurrent").disabled = false;
-          document.getElementById("endNavigation").disabled = true;
-        }
 
         // TSP solver (nearest neighbor heuristic)
         function solveTSP(start, points) {
@@ -239,31 +153,23 @@
             checkProximityToNextInstruction(newLatLng);
           }
         }
-        document
-          .getElementById("resetNavigation")
-          .addEventListener("click", function () {
-            stopCurrentNavigation();
-            markers.forEach(function (marker) {
-            map.removeLayer(marker);
-          });
-          markers = [];
-          if (currentLocationMarker) {
-            map.removeLayer(currentLocationMarker);
-            currentLocationMarker = null;
+
+        // Check proximity to the next instruction
+        function checkProximityToNextInstruction(position) {
+          if (!routingControl) return;
+          var instructions = routingControl._routes[0].instructions;
+          if (currentInstructionIndex >= instructions.length) return;
+
+          var nextInstruction = instructions[currentInstructionIndex];
+          var distanceToNext = position.distanceTo(
+            L.latLng(nextInstruction.latLng.lat, nextInstruction.latLng.lng)
+          );
+
+          if (distanceToNext < 30) {
+            speak(nextInstruction.text);
+            currentInstructionIndex++;
           }
-          if (routingControl) {
-            map.removeControl(routingControl);
-            routingControl = null;
-          }
-          navigationStarted = false;
-          document.getElementById("startNavigation").disabled = false;
-          document.getElementById("startFromCurrent").disabled = false;
-          document.getElementById("endNavigation").disabled = true;
-          this.disabled = true;
-            waypoints = [];
-            markers = [];
-            updateUI();
-          });
+        }
 
         // Start tracking location
         function startTracking() {
@@ -335,9 +241,8 @@
               .addTo(map);
 
             startTracking();
-            speak("Navigation started");
+            speak("navigation started");
             this.disabled = true;
-            document.getElementById("startFromCurrent").disabled = true;
           });
 
         // End navigation
@@ -345,11 +250,19 @@
           .getElementById("endNavigation")
           .addEventListener("click", function () {
             stopCurrentNavigation();
-            document.getElementById("resetNavigation").disabled = false;
-            //document.getElementById("startFromCurrent").disabled = true;
           });
 
         // Stop current navigation function
+        function stopCurrentNavigation() {
+          stopTracking();
+          if (routingControl) {
+            map.removeControl(routingControl);
+            routingControl = null;
+          }
+          navigationStarted = false;
+          document.getElementById("startNavigation").disabled = false;
+          document.getElementById("endNavigation").disabled = true;
+        }
 
         // Update UI text based on the waypoints
         function updateUI() {
@@ -357,7 +270,7 @@
           routeInfo.innerHTML = "Waypoints: " + waypoints.length;
         }
 
-        // Add current location to waypoints without starting navigation
+        // "Start from My Location" button click event
         document
           .getElementById("startFromCurrent")
           .addEventListener("click", function () {
@@ -367,11 +280,37 @@
                   position.coords.latitude,
                   position.coords.longitude
                 );
-                waypoints.push(currentLatLng);
-                L.marker(currentLatLng).addTo(map); // Add marker for current location
+                if (routingControl) {
+                  map.removeControl(routingControl);
+                }
+                waypoints.unshift(currentLatLng); // Start from the current location
                 updateUI();
-                alert("Current location added as a waypoint.");
-                document.getElementById("startFromCurrent").disabled = true;
+
+                var startLatLng = waypoints[0];
+                var optimizedWaypoints = solveTSP(
+                  startLatLng,
+                  waypoints.slice()
+                );
+
+                routingControl = L.Routing.control({
+                  waypoints: optimizedWaypoints,
+                  routeWhileDragging: true,
+                  router: L.Routing.osrmv1({
+                    profile: "car",
+                    serviceUrl: "https://router.project-osrm.org/route/v1",
+                    optimizedWaypoints: true,
+                  }),
+                  createMarker: function (i, wp) {
+                    return L.marker(wp.latLng);
+                  },
+                })
+                  .on("routesfound", function (e) {
+                    currentInstructionIndex = 0;
+                    navigationStarted = true;
+                    document.getElementById("endNavigation").disabled = false;
+                  })
+                  .addTo(map);
+                startTracking();
               },
               function (error) {
                 alert("Unable to retrieve your location.");
