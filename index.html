@@ -68,6 +68,7 @@
     <div id="map"></div>
     <div id="controls">
       <p id="routeInfo">Click on the map to add waypoints.</p>
+      <h4 id="DistanceInfo"></h4>
       <button id="startNavigation">Start Navigation</button>
       <button id="endNavigation" disabled>End Navigation</button>
       <br />
@@ -250,7 +251,15 @@
             if (arrowLayer) {
               map.removeLayer(arrowLayer);
             }
-
+            totaldistance = e.routes[0].summary.totalDistance;
+            totaltime = e.routes[0].summary.totalTime;
+            document.getElementById("DistanceInfo").innerHTML =
+              "Optimized Distance: " +
+              (totaldistance / 1000).toFixed(2) +
+              " km<br>" +
+              "Estimated Time: " +
+              (totaltime / 60).toFixed(2) +
+              " minutes";
             // Get the route coordinates
             const route = e.routes[0];
             const coordinates = route.coordinates;
@@ -691,6 +700,15 @@
               .on("routesfound", function (e) {
                 console.log("Routes found, speaking instructions");
                 speakAllInstructions(e.routes[0].instructions);
+                var totaldistance = e.routes[0].summary.totalDistance;
+                var totaltime = e.routes[0].summary.totalTime;
+                document.getElementById("DistanceInfo").innerHTML =
+                  "Optimized Distance: " +
+                  (totaldistance / 1000).toFixed(2) +
+                  " km<br>" +
+                  "Estimated Time: " +
+                  (totaltime / 60).toFixed(2) +
+                  " minutes";
                 updateRoute(e.routes[0]);
                 currentInstructionIndex = 0;
                 navigationStarted = true;
