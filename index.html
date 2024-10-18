@@ -73,7 +73,7 @@
       <p id="routeInfo">Click on the map to add waypoints.</p>
       <button id="startNavigation">Start Navigation</button>
       <button id="endNavigation" disabled>End Navigation</button>
-      <br>
+      <br />
       <button id="startFromCurrent">Start from My Location</button>
       <button id="resetNavigation" disabled>Reset Navigation</button>
     </div>
@@ -244,22 +244,22 @@
           .addEventListener("click", function () {
             stopCurrentNavigation();
             markers.forEach(function (marker) {
-            map.removeLayer(marker);
-          });
-          markers = [];
-          if (currentLocationMarker) {
-            map.removeLayer(currentLocationMarker);
-            currentLocationMarker = null;
-          }
-          if (routingControl) {
-            map.removeControl(routingControl);
-            routingControl = null;
-          }
-          navigationStarted = false;
-          document.getElementById("startNavigation").disabled = false;
-          document.getElementById("startFromCurrent").disabled = false;
-          document.getElementById("endNavigation").disabled = true;
-          this.disabled = true;
+              map.removeLayer(marker);
+            });
+            markers = [];
+            if (currentLocationMarker) {
+              map.removeLayer(currentLocationMarker);
+              currentLocationMarker = null;
+            }
+            if (routingControl) {
+              map.removeControl(routingControl);
+              routingControl = null;
+            }
+            navigationStarted = false;
+            document.getElementById("startNavigation").disabled = false;
+            document.getElementById("startFromCurrent").disabled = false;
+            document.getElementById("endNavigation").disabled = true;
+            this.disabled = true;
             waypoints = [];
             markers = [];
             updateUI();
@@ -294,11 +294,18 @@
 
         // Voice announcement function
         function speak(text) {
-          console.log("------------_>>>>>>>",text);
+          console.log("------------_>>>>>>>", text);
           var speech = new SpeechSynthesisUtterance(text);
           speech.lang = "en-US";
           window.speechSynthesis.speak(speech);
-          window.ReactNativeWebView.postMessage(text);
+          if (window.ReactNativeWebView) {
+            alert("ReactNativeWebView available");
+            alert(text);
+            window.ReactNativeWebView.postMessage(text);
+          } else {
+            console.log("ReactNativeWebView not available");
+            alert("ReactNativeWebView not available");
+          }
         }
 
         // Start navigation
