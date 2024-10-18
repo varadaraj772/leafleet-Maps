@@ -294,9 +294,11 @@
 
         // Voice announcement function
         function speak(text) {
+          console.log("------------_>>>>>>>",text);
           var speech = new SpeechSynthesisUtterance(text);
           speech.lang = "en-US";
           window.speechSynthesis.speak(speech);
+          window.ReactNativeWebView.postMessage(text);
         }
 
         // Start navigation
