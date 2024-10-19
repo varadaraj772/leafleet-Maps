@@ -342,6 +342,7 @@
         }
 
         function stopCurrentNavigation() {
+          stopSpeech=true;
           stopTracking();
           if (routingControl) {
             map.removeControl(routingControl);
@@ -351,6 +352,7 @@
           navigationStarted = false;
           document.getElementById("startNavigation").disabled = false;
           document.getElementById("startFromCurrent").disabled = false;
+          document.getElementById("resetNavigation").disabled = false;
           document.getElementById("endNavigation").disabled = true;
         }
 
@@ -706,7 +708,7 @@
               window.speechSynthesis.speak(speech);
             }
           } else {
-            window.speechSynthesis.cancel();
+            
           }
         }
 
@@ -775,7 +777,7 @@
         document
           .getElementById("endNavigation")
           .addEventListener("click", function () {
-            window.speechSynthesis.cancel();
+           // window.speechSynthesis.cancel();
             stopCurrentNavigation();
             document.getElementById("resetNavigation").disabled = false;
           });
