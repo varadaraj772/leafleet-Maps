@@ -56,6 +56,10 @@
       #resetNavigation {
         background-color: red;
       }
+      #resetNavigation:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
       .marker-label {
         background: white;
         border: 1px solid #666;
@@ -104,9 +108,9 @@
       <p id="routeInfo">Click on the map to add waypoints.</p>
       <h4 id="DistanceInfo"></h4>
       <button id="startNavigation">Start Navigation</button>
-      <button id="endNavigation" disabled>End Navigation</button>
+      <button id="endNavigation">End Navigation</button>
       <button id="startFromCurrent">Start from My Location</button>
-      <button id="resetNavigation" disabled>Reset Navigation</button>
+      <button id="resetNavigation">Reset Navigation</button>
       <button id="StopSpeech">Stop Voice Commands</button>
     </div>
 
@@ -129,7 +133,8 @@
         var arrowLayer;
         var waypointCounter = 1;
         var stopSpeech = false;
-
+        document.getElementById("endNavigation").disabled = true;
+      //document.getElementById("resetNavigation").disabled = false;
         function createMarkerWithLabel(latlng, color, labelText) {
           var icon = L.icon({
             iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
@@ -583,6 +588,7 @@
           .getElementById("resetNavigation")
           .addEventListener("click", function () {
             // Stop navigation and tracking
+            
             stopCurrentNavigation();
 
             // Remove all markers including their labels
@@ -657,7 +663,9 @@
 
             // Speak feedback
             speak("Navigation reset. All markers cleared.");
+            stopSpeech=true;
             window.speechSynthesis.cancel();
+
           });
 
         function startTracking() {
@@ -713,6 +721,7 @@
         document
           .getElementById("startNavigation")
           .addEventListener("click", function () {
+            document.getElementById("resetNavigation").disabled = true;
             if (waypoints.length < 2) {
               alert("Add at least two waypoints to start navigation.");
               return;
