@@ -724,6 +724,7 @@
           .getElementById("startNavigation")
           .addEventListener("click", function () {
             document.getElementById("resetNavigation").disabled = true;
+            stopSpeech=false;
             if (waypoints.length < 2) {
               alert("Add at least two waypoints to start navigation.");
               return;
@@ -790,6 +791,7 @@
         document
           .getElementById("startFromCurrent")
           .addEventListener("click", function () {
+            stopSpeech=false;
             navigator.geolocation.getCurrentPosition(
               function (position) {
                 var currentLatLng = L.latLng(
