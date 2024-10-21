@@ -134,7 +134,7 @@
         var waypointCounter = 1;
         var stopSpeech = false;
         document.getElementById("endNavigation").disabled = true;
-      //document.getElementById("resetNavigation").disabled = false;
+        //document.getElementById("resetNavigation").disabled = false;
         function createMarkerWithLabel(latlng, color, labelText) {
           var icon = L.icon({
             iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
@@ -170,10 +170,13 @@
         }).addTo(map);
 
         function updateRoute(route) {
+          console.log("updateRoute---->>", route);
           if (routeLayer) {
+            console.log("routeLayer---->>", routeLayer);
             map.removeLayer(routeLayer);
           }
           if (arrowLayer) {
+            console.log("arrowLayer---->>", arrowLayer);
             map.removeLayer(arrowLayer);
           }
 
@@ -255,6 +258,7 @@
         //   startTracking();
         // }
         function restartNavigationFromCurrentLocation(position) {
+          console.log("restartNavigationFromCurrentLocation---->>", position);
           var currentLatLng = L.latLng(
             position.coords.latitude,
             position.coords.longitude
@@ -303,6 +307,7 @@
             // Get the route coordinates
             const route = e.routes[0];
             const coordinates = route.coordinates;
+            console.log("Coordinates---------------", coordinates);
 
             // Create arrow decorations
             arrowLayer = L.polylineDecorator(coordinates, {
@@ -342,7 +347,7 @@
         }
 
         function stopCurrentNavigation() {
-          stopSpeech=true;
+          stopSpeech = true;
           stopTracking();
           if (routingControl) {
             map.removeControl(routingControl);
@@ -373,7 +378,7 @@
             document.getElementById("startNavigation").disabled = true;
             document.getElementById("endNavigation").disabled = true;
             document.getElementById("startFromCurrent").disabled = true;
-            alert("New waypoint added. Navigation will be restarted.");
+           // alert("New waypoint added. Navigation will be restarted.");
             navigator.geolocation.getCurrentPosition(
               function (position) {
                 restartNavigationFromCurrentLocation(position);
@@ -413,9 +418,8 @@
         // Rest of your existing functions (solveTSP, checkProximityToNextInstruction, etc.)
         function solveTSP(start, points) {
           // Simple start to end route
-          return [start, ...points];
+          //return [start, ...points];
 
-          /* Original roundtrip TSP solution
           let tspPath = [start];
           let current = start;
           while (points.length > 0) {
@@ -436,7 +440,6 @@
           }
           tspPath.push(start);
           return tspPath;
-          */
         }
 
         function checkProximityToNextInstruction(position) {
@@ -590,7 +593,7 @@
           .getElementById("resetNavigation")
           .addEventListener("click", function () {
             // Stop navigation and tracking
-            
+
             stopCurrentNavigation();
 
             // Remove all markers including their labels
@@ -665,9 +668,8 @@
 
             // Speak feedback
             speak("Navigation reset. All markers cleared.");
-            stopSpeech=true;
+            stopSpeech = true;
             window.speechSynthesis.cancel();
-
           });
 
         function startTracking() {
@@ -708,12 +710,14 @@
               window.speechSynthesis.speak(speech);
             }
           } else {
-            
           }
         }
 
         function speakAllInstructions(instructions) {
+          console.log("----->>", instructions);
           instructions.forEach((instruction, index) => {
+            // console.log("Instruction--->", instruction);
+            // console.log("Instruction--->", instruction?.distance);
             setTimeout(() => {
               speak(`Step ${index + 1}: ${instruction.text}`);
             }, index * 5000); // 5 second delay between each instruction
@@ -724,12 +728,12 @@
           .getElementById("startNavigation")
           .addEventListener("click", function () {
             document.getElementById("resetNavigation").disabled = true;
-            stopSpeech=false;
+            stopSpeech = false;
             if (waypoints.length < 2) {
               alert("Add at least two waypoints to start navigation.");
               return;
             }
-
+            console.log("waypoints--->", waypoints);
             var startLatLng = waypoints[0];
             map.setView(startLatLng);
             var optimizedWaypoints = solveTSP(startLatLng, waypoints.slice());
@@ -752,6 +756,7 @@
             })
               .on("routesfound", function (e) {
                 console.log("Routes found, speaking instructions");
+                console.log("Instruction--->", e.routes[0]);
                 speakAllInstructions(e.routes[0].instructions);
                 var totaldistance = e.routes[0].summary.totalDistance;
                 var totaltime = e.routes[0].summary.totalTime;
@@ -778,7 +783,7 @@
         document
           .getElementById("endNavigation")
           .addEventListener("click", function () {
-           // window.speechSynthesis.cancel();
+            // window.speechSynthesis.cancel();
             stopCurrentNavigation();
             document.getElementById("resetNavigation").disabled = false;
           });
@@ -791,7 +796,7 @@
         document
           .getElementById("startFromCurrent")
           .addEventListener("click", function () {
-            stopSpeech=false;
+            stopSpeech = false;
             navigator.geolocation.getCurrentPosition(
               function (position) {
                 var currentLatLng = L.latLng(
