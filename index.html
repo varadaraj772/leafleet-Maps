@@ -168,12 +168,23 @@
             '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 18,
         }).addTo(map);
-function getparams(coordinates) {
-  coordinates.map((item) => {
-    document.getElementById("DistanceInfo").innerText=item[0];
-  })
-}
 
+
+        function getparams(coordinates) {
+          coordinates.map((item) => {
+            document.getElementById("DistanceInfo").innerHTML += `${item[0]}, ${item[1]}<br/>`;
+          });
+        }
+
+        window.onload = function() {
+          getparams([[10, 20], [30, 40], [50, 60]]);
+        };
+        
+        
+        
+        
+        
+        
         function updateRoute(route) {
           console.log("updateRoute---->>", route);
           if (routeLayer) {
