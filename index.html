@@ -168,7 +168,11 @@
             '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 18,
         }).addTo(map);
-
+function getparams(coordinates) {
+  coordinates.map((item) => {
+    alert(item[0] + "--" + item[1]);
+  })
+}
         function updateRoute(route) {
           console.log("updateRoute---->>", route);
           if (routeLayer) {
