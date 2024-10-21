@@ -1,0 +1,872 @@
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Route Navigation with Labeled Markers</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+    />
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #map {
+        width: 100%;
+        height: 100vh;
+      }
+      #controls {
+        position: absolute;
+        top: 1%;
+        left: 3.5%;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        max-width: 300px;
+      }
+      button {
+        display: block;
+        width: 100%;
+        margin-bottom: 10px;
+        padding: 10px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      #resetNavigation {
+        background-color: red;
+      }
+      #resetNavigation:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      .marker-label {
+        background: white;
+        border: 1px solid #666;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: bold;
+        white-space: nowrap;
+        box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+      @media (max-width: 768px) {
+        #controls {
+          top: auto;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          max-width: none;
+          border-radius: 0;
+          padding: 10px;
+        }
+        #map {
+          height: calc(100vh - 200px);
+        }
+        button {
+          font-size: 14px;
+          padding: 12px;
+        }
+      }
+      @media (max-width: 480px) {
+        #controls {
+          padding: 8px;
+        }
+        #map {
+          height: calc(100vh - 150px);
+        }
+        button {
+          font-size: 12px;
+          padding: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="controls">
+      <p id="routeInfo">Click on the map to add waypoints.</p>
+      <h4 id="DistanceInfo"></h4>
+      <button id="startNavigation">Start Navigation</button>
+      <button id="endNavigation">End Navigation</button>
+      <button id="startFromCurrent">Start from My Location</button>
+      <button id="resetNavigation">Reset Navigation</button>
+      <button id="StopSpeech">Stop Voice Commands</button>
+    </div>
+
+    
+    <script>
+      // This function will be called from injected JavaScript
+      function displayData(data) {
+          document.getElementById('data-placeholder').innerText = data;
+      }
+  </script>
+
+
+<!-- <script>
+  document.addEventListener('message', function(event) {
+      const data = event.data;
+      document.getElementById('data-placeholder').innerText = data;
+  });
+</script> -->
+
+    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        var map = L.map("map").setView([12.9172, 74.856], 13);
+        var currentLocationMarker;
+        var currentLocationLabel;
+        var watchID;
+        var waypoints = [];
+        var markers = [];
+        var routingControl;
+        var navigationStarted = false;
+        var currentInstructionIndex = 0;
+        var lastSpokenInstruction = null;
+        var routeLayer;
+        var arrowLayer;
+        var waypointCounter = 1;
+        var stopSpeech = false;
+        document.getElementById("endNavigation").disabled = true;
+        //document.getElementById("resetNavigation").disabled = false;
+        function createMarkerWithLabel(latlng, color, labelText) {
+          var icon = L.icon({
+            iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
+            shadowUrl:
+              "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41],
+          });
+
+          var marker = L.marker(latlng, { icon: icon }).addTo(map);
+
+          var label = L.divIcon({
+            className: "marker-label",
+            html: labelText,
+            iconSize: [100, 20],
+            iconAnchor: [50, 30],
+          });
+
+          L.marker(latlng, {
+            icon: label,
+            zIndexOffset: 1000,
+          }).addTo(map);
+
+          return marker;
+        }
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 18,
+        }).addTo(map);
+
+
+        // document.addEventListener("message", function(event) {
+        //   const coordinates = JSON.parse(event.data);
+        //   alert("Received coordinates: " + coordinates.map(item => item[0] + "--" + item[1]).join(", "));
+        // });
+
+        function getparams(coordinates) {
+          coordinates.map((item) => {
+            document.getElementById("DistanceInfo").innerHTML += `${item[0]}, ${item[1]}<br/>`;
+          });
+        }
+
+        window.onload = function() {
+          getparams([[10, 20], [30, 40], [50, 60]]);
+        };
+        
+        
+        
+        
+        
+        function updateRoute(route) {
+          console.log("updateRoute---->>", route);
+          if (routeLayer) {
+            console.log("routeLayer---->>", routeLayer);
+            map.removeLayer(routeLayer);
+          }
+          if (arrowLayer) {
+            console.log("arrowLayer---->>", arrowLayer);
+            map.removeLayer(arrowLayer);
+          }
+
+          routeLayer = L.polyline(route.coordinates, { color: "blue" }).addTo(
+            map
+          );
+
+          arrowLayer = L.polylineDecorator(routeLayer, {
+            patterns: [
+              {
+                offset: 25,
+                repeat: 50,
+                symbol: L.Symbol.arrowHead({
+                  pixelSize: 10,
+                  polygon: false,
+                  pathOptions: { stroke: true, color: "green" },
+                }),
+              },
+            ],
+          }).addTo(map);
+
+          // Update start and end markers with labels
+          if (markers.length > 0) {
+            markers.forEach((marker) => map.removeLayer(marker));
+            markers = [];
+          }
+
+          // Add start marker with label
+          markers.push(
+            createMarkerWithLabel(route.coordinates[0], "green", "Start Point")
+          );
+
+          // Add end marker with label
+          markers.push(
+            createMarkerWithLabel(
+              route.coordinates[route.coordinates.length - 1],
+              "red",
+              "End Point"
+            )
+          );
+        }
+
+        // function restartNavigationFromCurrentLocation(position) {
+        //   var currentLatLng = L.latLng(
+        //     position.coords.latitude,
+        //     position.coords.longitude
+        //   );
+        //   waypoints.unshift(currentLatLng); // Add current location as the first waypoint
+
+        //   // Solve TSP to get the optimized order of waypoints
+        //   var optimizedWaypoints = solveTSP(currentLatLng, waypoints.slice());
+
+        //   if (routingControl) {
+        //     map.removeControl(routingControl);
+        //   }
+        //  // updateRoute(position);
+        //   routingControl = L.Routing.control({
+        //     waypoints: optimizedWaypoints,
+        //     routeWhileDragging: true,
+        //     router: L.Routing.osrmv1({
+        //       profile: "car",
+        //       serviceUrl: "https://router.project-osrm.org/route/v1",
+        //       optimizedWaypoints: true,
+        //     }),
+        //     createMarker: function (i, wp) {
+        //       return L.marker(wp.latLng);
+        //     },
+        //   })
+        //     .on("routesfound", function (e) {
+        //       currentInstructionIndex = 0;
+        //       navigationStarted = true;
+        //       document.getElementById("endNavigation").disabled = false;
+        //       document.getElementById("startNavigation").disabled = true;
+        //       document.getElementById("startFromCurrent").disabled = true;
+        //       speak("New waypoint added. And Navigation restarted.");
+        //     })
+        //     .addTo(map);
+
+        //   startTracking();
+        // }
+        function restartNavigationFromCurrentLocation(position) {
+          console.log("restartNavigationFromCurrentLocation---->>", position);
+          var currentLatLng = L.latLng(
+            position.coords.latitude,
+            position.coords.longitude
+          );
+          waypoints.unshift(currentLatLng);
+
+          var optimizedWaypoints = solveTSP(currentLatLng, waypoints.slice());
+
+          if (routingControl) {
+            map.removeControl(routingControl);
+          }
+
+          routingControl = L.Routing.control({
+            waypoints: optimizedWaypoints,
+            routeWhileDragging: true,
+            router: L.Routing.osrmv1({
+              profile: "car",
+              serviceUrl: "https://router.project-osrm.org/route/v1",
+              optimizedWaypoints: true,
+            }),
+            lineOptions: {
+              styles: [{ color: "blue", opacity: 0.8, weight: 4 }],
+              addWaypoints: false,
+              extendToWaypoints: true,
+              missingRouteTolerance: 0,
+            },
+            createMarker: function () {
+              return null;
+            }, // Disable default markers as we're using custom ones
+          }).addTo(map);
+
+          routingControl.on("routesfound", function (e) {
+            // Remove existing arrow decorators if any
+            if (arrowLayer) {
+              map.removeLayer(arrowLayer);
+            }
+            totaldistance = e.routes[0].summary.totalDistance;
+            totaltime = e.routes[0].summary.totalTime;
+            document.getElementById("DistanceInfo").innerHTML =
+              "Optimized Distance: " +
+              (totaldistance / 1000).toFixed(2) +
+              " km<br>" +
+              "Estimated Time: " +
+              (totaltime / 60).toFixed(2) +
+              " minutes";
+            // Get the route coordinates
+            const route = e.routes[0];
+            const coordinates = route.coordinates;
+            console.log("Coordinates---------------", coordinates);
+
+            // Create arrow decorations
+            arrowLayer = L.polylineDecorator(coordinates, {
+              patterns: [
+                {
+                  offset: "5%",
+                  repeat: "10%",
+                  symbol: L.Symbol.arrowHead({
+                    pixelSize: 12,
+                    polygon: false,
+                    pathOptions: {
+                      stroke: true,
+                      color: "blue",
+                      weight: 3,
+                    },
+                  }),
+                },
+              ],
+            }).addTo(map);
+
+            // Update route visualization
+            updateRoute(route);
+
+            // Update navigation state
+            currentInstructionIndex = 0;
+            navigationStarted = true;
+            document.getElementById("endNavigation").disabled = false;
+            document.getElementById("startNavigation").disabled = true;
+            document.getElementById("startFromCurrent").disabled = true;
+
+            // Provide voice feedback
+            speak("New waypoint added. And Navigation restarted.");
+            //window.speechSynthesis.cancel();
+          });
+
+          startTracking();
+        }
+
+        function stopCurrentNavigation() {
+          stopSpeech = true;
+          stopTracking();
+          if (routingControl) {
+            map.removeControl(routingControl);
+            routingControl = null;
+            speak("Navigation Ended");
+          }
+          navigationStarted = false;
+          document.getElementById("startNavigation").disabled = false;
+          document.getElementById("startFromCurrent").disabled = false;
+          document.getElementById("resetNavigation").disabled = false;
+          document.getElementById("endNavigation").disabled = true;
+        }
+
+        map.on("click", function (e) {
+          var latLng = e.latlng;
+          waypoints.push(latLng);
+          markers.push(
+            createMarkerWithLabel(
+              latLng,
+              "blue",
+              `Waypoint ${waypointCounter++}`
+            )
+          );
+          updateUI();
+
+          if (navigationStarted) {
+            stopCurrentNavigation();
+            document.getElementById("startNavigation").disabled = true;
+            document.getElementById("endNavigation").disabled = true;
+            document.getElementById("startFromCurrent").disabled = true;
+           // alert("New waypoint added. Navigation will be restarted.");
+            navigator.geolocation.getCurrentPosition(
+              function (position) {
+                restartNavigationFromCurrentLocation(position);
+              },
+              function (error) {
+                alert("Unable to retrieve your location.");
+              }
+            );
+          }
+        });
+
+        function updateMarkerPosition(position) {
+          var lat = position.coords.latitude;
+          var lng = position.coords.longitude;
+          var newLatLng = L.latLng(lat, lng);
+
+          if (currentLocationMarker) {
+            currentLocationMarker.setLatLng(newLatLng);
+            if (currentLocationLabel) {
+              currentLocationLabel.setLatLng(newLatLng);
+            }
+          } else {
+            currentLocationMarker = createMarkerWithLabel(
+              newLatLng,
+              "red",
+              "You're here"
+            );
+          }
+
+          map.setView(newLatLng);
+
+          if (navigationStarted) {
+            checkProximityToNextInstruction(newLatLng);
+          }
+        }
+
+        // Rest of your existing functions (solveTSP, checkProximityToNextInstruction, etc.)
+        function solveTSP(start, points) {
+          // Simple start to end route
+          //return [start, ...points];
+
+          let tspPath = [start];
+          let current = start;
+          while (points.length > 0) {
+            let nearest = null;
+            let nearestIndex = -1;
+            let minDist = Infinity;
+            points.forEach((point, index) => {
+              let dist = current.distanceTo(point);
+              if (dist < minDist) {
+                minDist = dist;
+                nearest = point;
+                nearestIndex = index;
+              }
+            });
+            tspPath.push(nearest);
+            current = nearest;
+            points.splice(nearestIndex, 1);
+          }
+          tspPath.push(start);
+          return tspPath;
+        }
+
+        function checkProximityToNextInstruction(position) {
+          console.log("Current position:", position);
+
+          if (
+            !routingControl ||
+            !routingControl._routes ||
+            !routingControl._routes[0]
+          ) {
+            console.log("Routing control or routes not available");
+            return;
+          }
+
+          var instructions = routingControl._routes[0].instructions;
+
+          if (!instructions || currentInstructionIndex >= instructions.length) {
+            console.log("No more instructions available");
+            return;
+          }
+
+          var nextInstruction = instructions[currentInstructionIndex];
+
+          if (!nextInstruction || !nextInstruction.latLng) {
+            console.log("Next instruction or its latLng is undefined");
+            return;
+          }
+
+          var nextLat = nextInstruction.latLng.lat;
+          var nextLng = nextInstruction.latLng.lng;
+
+          if (typeof nextLat !== "number" || typeof nextLng !== "number") {
+            console.log("Invalid coordinates in next instruction");
+            return;
+          }
+
+          var distanceToNext = position.distanceTo(L.latLng(nextLat, nextLng));
+
+          console.log(
+            `Distance to next instruction: ${distanceToNext.toFixed(2)} meters`
+          );
+
+          if (
+            distanceToNext < 50 &&
+            lastSpokenInstruction !== nextInstruction.text
+          ) {
+            speak(nextInstruction.text);
+            lastSpokenInstruction = nextInstruction.text;
+            currentInstructionIndex++;
+          }
+        }
+
+        // function updateMarkerPosition(position) {
+        //   var lat = position.coords.latitude;
+        //   var lng = position.coords.longitude;
+        //   var newLatLng = L.latLng(lat, lng);
+
+        //   if (currentLocationMarker) {
+        //     currentLocationMarker.setLatLng(newLatLng);
+        //   } else {
+        //     currentLocationMarker = L.marker(newLatLng, {
+        //       icon: L.icon({
+        //         iconUrl:
+        //           "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+        //         iconSize: [25, 41],
+        //         iconAnchor: [12, 41],
+        //         popupAnchor: [1, -34],
+        //         shadowUrl:
+        //           "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+        //         shadowSize: [41, 41],
+        //       }),
+        //     }).addTo(map);
+        //   }
+
+        //   map.setView(newLatLng);
+
+        //   if (navigationStarted) {
+        //     checkProximityToNextInstruction(newLatLng);
+        //   }
+        // }
+
+        function updateMarkerPosition(position) {
+          var lat = position.coords.latitude;
+          var lng = position.coords.longitude;
+          var newLatLng = L.latLng(lat, lng);
+
+          if (currentLocationMarker) {
+            currentLocationMarker.setLatLng(newLatLng);
+          } else {
+            currentLocationMarker = L.marker(newLatLng, {
+              icon: L.icon({
+                iconUrl:
+                  "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowUrl:
+                  "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                shadowSize: [41, 41],
+              }),
+            }).addTo(map);
+
+            // Add "You're here" label
+            var label = L.divIcon({
+              className: "current-location-label",
+              html: "You're here",
+              iconSize: [70, 20],
+              iconAnchor: [35, 30],
+            });
+
+            L.marker(newLatLng, {
+              icon: label,
+              zIndexOffset: 1000,
+            }).addTo(map);
+          }
+          //changed
+          //map.setView(newLatLng);
+
+          if (navigationStarted) {
+            checkProximityToNextInstruction(newLatLng);
+          }
+        }
+
+        // document
+        //   .getElementById("resetNavigation")
+        //   .addEventListener("click", function () {
+        //     stopCurrentNavigation();
+        //     markers.forEach(function (marker) {
+        //       map.removeLayer(marker);
+        //     });
+        //     markers = [];
+        //     if (currentLocationMarker) {
+        //       map.removeLayer(currentLocationMarker);
+        //       currentLocationMarker = null;
+        //     }
+        //     if (routingControl) {
+        //       map.removeControl(routingControl);
+        //       routingControl = null;
+        //     }
+        //     navigationStarted = false;
+        //     document.getElementById("startNavigation").disabled = false;
+        //     document.getElementById("startFromCurrent").disabled = false;
+        //     document.getElementById("endNavigation").disabled = true;
+        //     waypoints = [];
+        //     markers = [];
+        //     map.setView(L.latLng(position.coords.latitude, position.coords.longitude));
+        //     updateUI();
+        //   });
+
+        document
+          .getElementById("resetNavigation")
+          .addEventListener("click", function () {
+            // Stop navigation and tracking
+
+            stopCurrentNavigation();
+
+            // Remove all markers including their labels
+            markers.forEach(function (marker) {
+              map.removeLayer(marker);
+            });
+            markers = [];
+
+            // Remove all marker labels (they might be stored separately)
+            map.eachLayer((layer) => {
+              if (
+                layer.options &&
+                layer.options.icon &&
+                layer.options.icon.options.className === "marker-label"
+              ) {
+                map.removeLayer(layer);
+              }
+            });
+
+            // Remove current location marker and its label
+            if (currentLocationMarker) {
+              map.removeLayer(currentLocationMarker);
+              currentLocationMarker = null;
+            }
+
+            // Remove routing control
+            if (routingControl) {
+              map.removeControl(routingControl);
+              routingControl = null;
+            }
+
+            // Remove route polyline and arrows
+            if (routeLayer) {
+              map.removeLayer(routeLayer);
+              routeLayer = null;
+            }
+            if (arrowLayer) {
+              map.removeLayer(arrowLayer);
+              arrowLayer = null;
+            }
+
+            // Reset all variables
+            navigationStarted = false;
+            waypoints = [];
+            markers = [];
+            waypointCounter = 1;
+            currentInstructionIndex = 0;
+            lastSpokenInstruction = null;
+
+            // Reset UI buttons
+            document.getElementById("startNavigation").disabled = false;
+            document.getElementById("startFromCurrent").disabled = false;
+            document.getElementById("endNavigation").disabled = true;
+            document.getElementById("resetNavigation").disabled = true;
+
+            // Get current position and center map
+            navigator.geolocation.getCurrentPosition(
+              function (position) {
+                map.setView(
+                  L.latLng(position.coords.latitude, position.coords.longitude),
+                  13 // zoom level
+                );
+              },
+              function (error) {
+                console.error("Error getting current position:", error);
+                alert("Unable to get current location. Map view not updated.");
+              }
+            );
+
+            // Update UI
+            updateUI();
+
+            // Speak feedback
+            speak("Navigation reset. All markers cleared.");
+            stopSpeech = true;
+            window.speechSynthesis.cancel();
+          });
+
+        function startTracking() {
+          if ("geolocation" in navigator) {
+            watchID = navigator.geolocation.watchPosition(
+              updateMarkerPosition,
+              function (error) {
+                console.error("Error in geolocation: ", error);
+              },
+              {
+                enableHighAccuracy: true,
+                maximumAge: 30000,
+                timeout: 27000,
+              }
+            );
+          } else {
+            alert("Geolocation is not supported by this browser.");
+          }
+        }
+
+        function stopTracking() {
+          if (watchID) {
+            navigator.geolocation.clearWatch(watchID);
+            watchID = null;
+          }
+        }
+
+        function speak(text) {
+          console.log("Speaking:", text);
+          if (stopSpeech == false) {
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(
+                JSON.stringify({ type: "speak", text: text })
+              );
+            } else {
+              var speech = new SpeechSynthesisUtterance(text);
+              speech.lang = "en-US";
+              window.speechSynthesis.speak(speech);
+            }
+          } else {
+          }
+        }
+
+        function speakAllInstructions(instructions) {
+          console.log("----->>", instructions);
+          instructions.forEach((instruction, index) => {
+            // console.log("Instruction--->", instruction);
+            // console.log("Instruction--->", instruction?.distance);
+            setTimeout(() => {
+              speak(`Step ${index + 1}: ${instruction.text}`);
+            }, index * 5000); // 5 second delay between each instruction
+          });
+        }
+
+        document
+          .getElementById("startNavigation")
+          .addEventListener("click", function () {
+            document.getElementById("resetNavigation").disabled = true;
+            stopSpeech = false;
+            if (waypoints.length < 2) {
+              alert("Add at least two waypoints to start navigation.");
+              return;
+            }
+            console.log("waypoints--->", waypoints);
+            var startLatLng = waypoints[0];
+            map.setView(startLatLng);
+            var optimizedWaypoints = solveTSP(startLatLng, waypoints.slice());
+
+            if (routingControl) {
+              map.removeControl(routingControl);
+            }
+
+            routingControl = L.Routing.control({
+              waypoints: optimizedWaypoints,
+              routeWhileDragging: true,
+              router: L.Routing.osrmv1({
+                profile: "car",
+                serviceUrl: "https://router.project-osrm.org/route/v1",
+                optimizedWaypoints: true,
+              }),
+              createMarker: function (i, wp) {
+                return L.marker(wp.latLng);
+              },
+            })
+              .on("routesfound", function (e) {
+                console.log("Routes found, speaking instructions");
+                console.log("Instruction--->", e.routes[0]);
+                speakAllInstructions(e.routes[0].instructions);
+                var totaldistance = e.routes[0].summary.totalDistance;
+                var totaltime = e.routes[0].summary.totalTime;
+                document.getElementById("DistanceInfo").innerHTML =
+                  "Optimized Distance: " +
+                  (totaldistance / 1000).toFixed(2) +
+                  " km<br>" +
+                  "Estimated Time: " +
+                  (totaltime / 60).toFixed(2) +
+                  " minutes";
+                updateRoute(e.routes[0]);
+                currentInstructionIndex = 0;
+                navigationStarted = true;
+                document.getElementById("endNavigation").disabled = false;
+              })
+              .addTo(map);
+
+            startTracking();
+            speak("Navigation started");
+            this.disabled = true;
+            document.getElementById("startFromCurrent").disabled = true;
+          });
+
+        document
+          .getElementById("endNavigation")
+          .addEventListener("click", function () {
+            // window.speechSynthesis.cancel();
+            stopCurrentNavigation();
+            document.getElementById("resetNavigation").disabled = false;
+          });
+
+        function updateUI() {
+          var routeInfo = document.getElementById("routeInfo");
+          routeInfo.innerHTML = "Waypoints: " + waypoints.length;
+        }
+
+        document
+          .getElementById("startFromCurrent")
+          .addEventListener("click", function () {
+            stopSpeech = false;
+            navigator.geolocation.getCurrentPosition(
+              function (position) {
+                var currentLatLng = L.latLng(
+                  position.coords.latitude,
+                  position.coords.longitude
+                );
+                waypoints.push(currentLatLng);
+
+                // Create marker with label using the createMarkerWithLabel function
+                markers.push(
+                  createMarkerWithLabel(currentLatLng, "blue", "Starting Point")
+                );
+
+                updateUI();
+                alert("Current location added as a waypoint.");
+                document.getElementById("startFromCurrent").disabled = true;
+              },
+              function (error) {
+                alert("Unable to retrieve your location.");
+              }
+            );
+          });
+
+        document
+          .getElementById("StopSpeech")
+          .addEventListener("click", function () {
+            stopSpeech = true;
+            window.speechSynthesis.cancel();
+          });
+      });
+    </script>
+  </body>
+</html>
