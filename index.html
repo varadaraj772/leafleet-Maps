@@ -1,144 +1,140 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>Geolocation with Routing</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tracking Map</title>
+    <!-- Leaflet CSS -->
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+      integrity="sha512-xodZBNTC5n17Xt2jxtth7SrX5b/9+q5y9kaDz34Qmn1ymOe8NjTTm70ylbdiPt3Wv21D8cJumA4K4o3ypbgRVg=="
+      crossorigin=""
     />
+    <!-- Leaflet Geocoder CSS -->
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+      href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"
     />
-
     <style>
-      body {
-        margin: 0;
-        padding: 0;
-      }
-
-      #info {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: white;
-        padding: 10px;
-        border-radius: 5px;
-        z-index: 1000;
+      #map {
+        height: 400px;
+        width: 100%;
       }
     </style>
   </head>
-
   <body>
-    <div id="map" style="width: 100%; height: 100vh"></div>
-    <div id="info">
-      <strong>Distance:</strong> <span id="distance">Calculating...</span>
-      <br />
-      <strong>Time:</strong> <span id="time">Calculating...</span>
-    </div>
+    <h1>Tracking Map</h1>
+    <div id="map"></div>
+    <p id="status">Tracking status will appear here.</p>
+    <button id="start">Start Tracking</button>
+    <button id="stop">Stop Tracking</button>
+    <button id="marker">Add Marker</button>
+    <button id="export">Export Path</button>
 
-    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
-    <script src="https://unpkg.com/leaflet-polylinedecorator@1.8.0/leaflet.polylineDecorator.js"></script>
+    <!-- Leaflet JS -->
+    <script
+      src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+      integrity="sha512-d9XYih9N+g+PJ0T1LrZS9lnmyXW9ixF+7V7efz3A5CA4VJ/jLNzgxsbYPJdjUTjJgUvj+H9QW4hNkEGbyLSQ=="
+      crossorigin=""
+    ></script>
+    <!-- Leaflet Geocoder JS -->
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
     <script>
-      var map = L.map("map").setView([12.9141, 74.856], 15);
-      var currentLatLng;
+      const status = document.getElementById("status");
 
-      // Custom red taxi icon
-      var taxiIcon = L.icon({
-        iconUrl:
-          "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-        shadowUrl:
-          "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
+      var map = L.map("map", {
+        center: [9.082, 8.6753],
+        zoom: 8,
       });
+      var osm = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution: '&copy; <a href="https://skatespot.com">SkateSpot, Inc.</a>',
+        }
+      ).addTo(map);
+      L.Control.geocoder().addTo(map);
+      if (!navigator.geolocation) {
+        console.log("Your browser doesn't support geolocation feature!");
+      }
 
-      // Custom green marker for the destination
-      var greenIcon = L.icon({
-        iconUrl:
-          "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
-        shadowUrl:
-          "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
-
-      // Tile layer
-      L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
+      const trackingPath = [];
+      const polyline = L.polyline([], {
+        color: "red",
+        weight: 3,
+        className: "path",
       }).addTo(map);
 
-      // Get current position and set the route
-      navigator.geolocation.getCurrentPosition(
-        function (position) {
-          currentLatLng = L.latLng(
-            position.coords.latitude,
-            position.coords.longitude
-          );
+      let intv;
+      let totalElapsedTime = 0;
+      let totalDistance = 0;
+      let previousTime;
+      let previousLatLng;
 
-          // Add current location marker
-          L.marker(currentLatLng, { icon: taxiIcon }).addTo(map);
+      function start() {
+        navigator.geolocation.getCurrentPosition(getPosition);
+        intv = setInterval(() => {
+          navigator.geolocation.getCurrentPosition(getPosition);
+        }, 1000);
+      }
 
-          var destinationLatLng = L.latLng(12.9951, 74.8094);
+      function getPosition(position) {
+        const { latitude, longitude } = position.coords;
+        const time = new Date();
+        const latLng = L.latLng(latitude, longitude);
 
-          // Add green marker for the destination
-          L.marker(destinationLatLng, { icon: greenIcon }).addTo(map);
+        // Skip first point (no computation is possible)
+        if (previousTime && previousLatLng) {
+          const elapsedTime = (time.getTime() - previousTime.getTime()) / 1000; // In seconds
+          const distance = previousLatLng.distanceTo(latLng);
+          const currentSpeed = distance / elapsedTime;
 
-          // Route layer
-          var routeControl = L.Routing.control({
-            waypoints: [currentLatLng, destinationLatLng],
-            createMarker: function () {
-              return null;
-            },
-            lineOptions: {
-              styles: [{ color: "blue", opacity: 0.8, weight: 4 }],
-            },
-          }).addTo(map);
+          const currentSpeedkmh = currentSpeed * 3.6;
+          const currentSpeedready = Math.trunc(currentSpeedkmh);
 
-          // Display distance and time when route is found
-          routeControl.on("routesfound", function (e) {
-            var route = e.routes[0];
-            var distance = route.summary.totalDistance / 1000; // Convert to kilometers
-            var time = route.summary.totalTime / 60; // Convert to minutes
+          totalElapsedTime += elapsedTime;
+          totalDistance += distance;
 
-            // Update the distance and time in the info div
-            document.getElementById("distance").innerHTML =
-              distance.toFixed(2) + " km";
-            document.getElementById("time").innerHTML =
-              time.toFixed(2) + " minutes";
+          const averageSpeed = totalDistance / totalElapsedTime; // In meters / second
+          const averageSpeedkmh = averageSpeed * 3.6;
+          const averageSpeedready = Math.trunc(averageSpeedkmh);
 
-            var routeLayer = L.polyline(route.coordinates, {
-              color: "blue",
-              weight: 4,
-              opacity: 0.7,
-            }).addTo(map);
+          const vit = [currentSpeedready, averageSpeedready];
+          status.innerText = `Current and average speed: ${vit.join(", ")} km/h`;
 
-            // Add arrow layer using polyline decorator
-            var arrowLayer = L.polylineDecorator(routeLayer, {
-              patterns: [
-                {
-                  offset: 25,
-                  repeat: 50,
-                  symbol: L.Symbol.arrowHead({
-                    pixelSize: 10,
-                    polygon: false,
-                    pathOptions: { stroke: true, color: "green" },
-                  }),
-                },
-              ],
-            }).addTo(map);
-          });
-        },
-        function (error) {
-          alert("Unable to retrieve your location.");
+          // Add current location to polyline and update map view
+          trackingPath.push(latLng);
+          polyline.addLatLng(latLng);
+          map.setView(latLng);
         }
-      );
+
+        // Record time and position for next computation
+        previousTime = time;
+        previousLatLng = latLng;
+      }
+
+      function startTracking(e) {
+        status.innerText = "Started tracking...";
+        e.preventDefault();
+        start();
+      }
+
+      function stopTracking(e) {
+        status.innerText = "Stopped tracking.";
+        e.preventDefault();
+        clearInterval(intv);
+      }
+
+      function addMarker() {
+        if (previousLatLng) {
+          L.marker(previousLatLng).addTo(map).bindPopup("Current Location").openPopup();
+        }
+      }
+
+      document.getElementById("start").addEventListener("click", startTracking);
+      document.getElementById("stop").addEventListener("click", stopTracking);
+      document.getElementById("marker").addEventListener("click", addMarker);
     </script>
   </body>
 </html>
